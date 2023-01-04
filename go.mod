@@ -18,8 +18,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
-	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
-	golang.org/x/text v0.3.7
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+	golang.org/x/text v0.6.0
 	k8s.io/api v0.23.9
 	k8s.io/apimachinery v0.23.9
 	k8s.io/apiserver v0.23.9
