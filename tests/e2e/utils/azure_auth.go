@@ -30,12 +30,13 @@ import (
 const (
 	TenantIDEnv               = "AZURE_TENANT_ID"
 	SubscriptionEnv           = "AZURE_SUBSCRIPTION_ID"
-	ServicePrincipleIDEnv     = "AZURE_CLIENT_ID"
+	AADClientIDEnv            = "AZURE_CLIENT_ID"
 	ServicePrincipleSecretEnv = "AZURE_CLIENT_SECRET" // #nosec G101
 	ClusterLocationEnv        = "AZURE_LOCATION"
 	ClusterEnvironment        = "AZURE_ENVIRONMENT"
 	LoadBalancerSkuEnv        = "AZURE_LOADBALANCER_SKU"
 	managedIdentityClientID   = "AZURE_MANAGED_IDENTITY_CLIENT_ID"
+	federatedTokenFile        = "AZURE_FEDERATED_TOKEN_FILE"
 	managedIdentityType       = "E2E_MANAGED_IDENTITY_TYPE"
 
 	userAssignedManagedIdentity = "userassigned"
@@ -56,6 +57,8 @@ type AzureAuthConfig struct {
 	SubscriptionID string
 	// The Environment represents a set of endpoints for each of Azure's Clouds.
 	Environment azure.Environment
+	// The AAD federated token file
+	AADFederatedTokenFile string
 }
 
 // getServicePrincipalToken creates a new service principal token based on the configuration
@@ -82,6 +85,22 @@ func getServicePrincipalToken(config *AzureAuthConfig) (*adal.ServicePrincipalTo
 			config.Environment.ServiceManagementEndpoint,
 			&miOptions)
 	}
+	if len(config.AADFederatedTokenFile) > 0 {
+		klog.Infoln("azure: using federated token to retrieve access token")
+		jwtCallback := func() (string, error) {
+			jwt, err := os.ReadFile(config.AADFederatedTokenFile)
+			if err != nil {
+				return "", fmt.Errorf("failed to read a file with a federated token: %w", err)
+			}
+			return string(jwt), nil
+		}
+		return adal.NewServicePrincipalTokenFromFederatedTokenCallback(
+			*oauthConfig,
+			config.AADClientID,
+			jwtCallback,
+			config.Environment.ServiceManagementEndpoint,
+		)
+	}
 
 	return nil, fmt.Errorf("No credentials provided for AAD application %s", config.AADClientID)
 }
@@ -106,17 +125,21 @@ func azureAuthConfigFromTestProfile() (*AzureAuthConfig, error) {
 		Environment:    env,
 	}
 
-	servicePrincipleIDEnv := os.Getenv(ServicePrincipleIDEnv)
+	aadClientIDEnv := os.Getenv(AADClientIDEnv)
 	servicePrincipleSecretEnv := os.Getenv(ServicePrincipleSecretEnv)
 	managedIdentityTypeEnv := os.Getenv(managedIdentityType)
 	managedIdentityClientIDEnv := os.Getenv(managedIdentityClientID)
-	if servicePrincipleIDEnv != "" && servicePrincipleSecretEnv != "" {
-		c.AADClientID = servicePrincipleIDEnv
+	federatedTokenFileEnv := os.Getenv(federatedTokenFile)
+	if aadClientIDEnv != "" && servicePrincipleSecretEnv != "" {
+		c.AADClientID = aadClientIDEnv
 		c.AADClientSecret = servicePrincipleSecretEnv
 	} else if managedIdentityTypeEnv != "" {
 		if managedIdentityTypeEnv == userAssignedManagedIdentity {
 			c.UserAssignedIdentityID = managedIdentityClientIDEnv
 		}
+	} else if federatedTokenFileEnv != "" {
+		c.AADFederatedTokenFile = federatedTokenFileEnv
+		c.AADClientID = aadClientIDEnv
 	} else {
 		return c, fmt.Errorf("failed to get Azure auth config from environment")
 	}
